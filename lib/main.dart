@@ -13,6 +13,7 @@ class Task {
 }
 
 enum AppThemeMode { light, dark, system, cyberpunk }
+enum AppLanguage { zh, en }
 
 class EisenhowerApp extends StatefulWidget {
   const EisenhowerApp({super.key});
@@ -22,6 +23,7 @@ class EisenhowerApp extends StatefulWidget {
 
 class _EisenhowerAppState extends State<EisenhowerApp> {
   AppThemeMode _themeMode = AppThemeMode.light;
+  AppLanguage _language = AppLanguage.zh;
   int _currentIndex = 0;
   final List<Task> tasks = [];
 
@@ -34,6 +36,12 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
   void _setThemeMode(AppThemeMode mode) {
     setState(() {
       _themeMode = mode;
+    });
+  }
+
+  void _setLanguage(AppLanguage lang) {
+    setState(() {
+      _language = lang;
     });
   }
 
@@ -89,12 +97,13 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
   Widget build(BuildContext context) {
     final isCyberpunk = _themeMode == AppThemeMode.cyberpunk;
     final theme = isCyberpunk ? cyberpunkTheme : Theme.of(context);
+    final lang = _language;
     // dock顏色
     final bottomBarBg = isCyberpunk ? cyberpunkSurface : theme.colorScheme.surface;
     final bottomBarSelected = isCyberpunk ? cyberpunkPrimary : theme.colorScheme.primary;
     final bottomBarUnselected = isCyberpunk ? cyberpunkSecondary : theme.unselectedWidgetColor;
     return MaterialApp(
-      title: 'Eisenhower Matrix Todo',
+      title: lang == AppLanguage.zh ? 'Eisenhower Matrix Todo' : 'Eisenhower Matrix Todo',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         brightness: Brightness.light,
@@ -112,9 +121,19 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
           body: IndexedStack(
             index: _currentIndex,
             children: [
-              EisenhowerListScreen(tasks: tasks, onAdd: _showAddTaskDialog, onDelete: _deleteTask),
-              QuadrantPlaneScreen(tasks: tasks, isCyberpunk: isCyberpunk),
-              SettingsScreen(themeMode: _themeMode, onThemeChanged: _setThemeMode),
+              EisenhowerListScreen(
+                tasks: tasks,
+                onAdd: _showAddTaskDialog,
+                onDelete: _deleteTask,
+                language: lang,
+              ),
+              QuadrantPlaneScreen(tasks: tasks, isCyberpunk: isCyberpunk, language: lang),
+              SettingsScreen(
+                themeMode: _themeMode,
+                onThemeChanged: _setThemeMode,
+                language: lang,
+                onLanguageChanged: _setLanguage,
+              ),
             ],
           ),
           bottomNavigationBar: BottomNavigationBar(
@@ -123,10 +142,10 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
             backgroundColor: bottomBarBg,
             selectedItemColor: bottomBarSelected,
             unselectedItemColor: bottomBarUnselected,
-            items: const [
-              BottomNavigationBarItem(icon: Icon(Icons.list), label: '清單'),
-              BottomNavigationBarItem(icon: Icon(Icons.grid_4x4), label: '座標'),
-              BottomNavigationBarItem(icon: Icon(Icons.settings), label: '設定'),
+            items: [
+              BottomNavigationBarItem(icon: const Icon(Icons.list), label: lang == AppLanguage.zh ? '清單' : 'List'),
+              BottomNavigationBarItem(icon: const Icon(Icons.grid_4x4), label: lang == AppLanguage.zh ? '座標' : 'Plane'),
+              BottomNavigationBarItem(icon: const Icon(Icons.settings), label: lang == AppLanguage.zh ? '設定' : 'Settings'),
             ],
           ),
         ),
@@ -175,18 +194,23 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
     }
     int importance = defaultImportance;
     int urgency = defaultUrgency;
+    final lang = _language;
+    final quadrantTitle = lang == AppLanguage.zh
+        ? EisenhowerListScreen.quadrantTitlesZh[quadrant]
+        : EisenhowerListScreen.quadrantTitlesEn[quadrant];
+    final addTitle = lang == AppLanguage.zh ? '新增到「$quadrantTitle」' : 'Add to "$quadrantTitle"';
     await showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text('新增到「${EisenhowerListScreen.quadrantTitles[quadrant]}」'),
+          title: Text(addTitle),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: dialogController,
                 autofocus: true,
-                decoration: const InputDecoration(labelText: '輸入待辦事項'),
+                decoration: InputDecoration(labelText: lang == AppLanguage.zh ? '輸入待辦事項' : 'Enter todo'),
                 onSubmitted: (value) {
                   if (value.trim().isNotEmpty) {
                     setState(() {
@@ -213,7 +237,7 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
                       },
                     ),
                   ),
-                  Text('$importance'),
+                  Text(lang == AppLanguage.zh ? '$importance' : '$importance'),
                 ],
               ),
               Row(
@@ -232,7 +256,7 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
                       },
                     ),
                   ),
-                  Text('$urgency'),
+                  Text(lang == AppLanguage.zh ? '$urgency' : '$urgency'),
                 ],
               ),
             ],
@@ -240,7 +264,7 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('取消'),
+              child: Text(lang == AppLanguage.zh ? '取消' : 'Cancel'),
             ),
             ElevatedButton(
               onPressed: () {
@@ -251,7 +275,7 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
                   Navigator.of(context).pop();
                 }
               },
-              child: const Text('新增'),
+              child: Text(lang == AppLanguage.zh ? '新增' : 'Add'),
             ),
           ],
         );
@@ -261,19 +285,27 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
 }
 
 class EisenhowerListScreen extends StatelessWidget {
-  static const quadrantTitles = [
+  static const quadrantTitlesZh = [
     '重要且緊急',
     '重要不緊急',
     '不重要但緊急',
     '不重要不緊急',
   ];
+  static const quadrantTitlesEn = [
+    'Important & Urgent',
+    'Important, Not Urgent',
+    'Not Important, Urgent',
+    'Not Important, Not Urgent',
+  ];
   final List<Task> tasks;
   final Future<void> Function(BuildContext, int quadrant) onAdd;
   final void Function(Task) onDelete;
-  const EisenhowerListScreen({super.key, required this.tasks, required this.onAdd, required this.onDelete});
+  final AppLanguage language;
+  const EisenhowerListScreen({super.key, required this.tasks, required this.onAdd, required this.onDelete, required this.language});
 
   @override
   Widget build(BuildContext context) {
+    final titles = language == AppLanguage.zh ? quadrantTitlesZh : quadrantTitlesEn;
     return SafeArea(
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -305,7 +337,7 @@ class EisenhowerListScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          quadrantTitles[i],
+                          titles[i],
                           style: const TextStyle(
                               fontWeight: FontWeight.bold, fontSize: 16),
                         ),
@@ -314,7 +346,7 @@ class EisenhowerListScreen extends StatelessWidget {
                           child: quadrantTasks.isEmpty
                               ? Center(
                                   child: Text(
-                                    '點擊新增',
+                                    language == AppLanguage.zh ? '點擊新增' : 'Tap to add',
                                     style: TextStyle(color: Colors.grey[400]),
                                   ),
                                 )
@@ -327,6 +359,7 @@ class EisenhowerListScreen extends StatelessWidget {
                                       title: Text('${quadrantTasks[j].title} (${quadrantTasks[j].importance},${quadrantTasks[j].urgency})'),
                                       trailing: IconButton(
                                         icon: const Icon(Icons.delete, size: 18),
+                                        tooltip: language == AppLanguage.zh ? '刪除' : 'Delete',
                                         onPressed: () => onDelete(quadrantTasks[j]),
                                       ),
                                     );
@@ -349,7 +382,8 @@ class EisenhowerListScreen extends StatelessWidget {
 class QuadrantPlaneScreen extends StatelessWidget {
   final List<Task> tasks;
   final bool isCyberpunk;
-  const QuadrantPlaneScreen({super.key, required this.tasks, this.isCyberpunk = false});
+  final AppLanguage language;
+  const QuadrantPlaneScreen({super.key, required this.tasks, this.isCyberpunk = false, required this.language});
 
   @override
   Widget build(BuildContext context) {
@@ -359,7 +393,7 @@ class QuadrantPlaneScreen extends StatelessWidget {
         child: AspectRatio(
           aspectRatio: 1,
           child: CustomPaint(
-            painter: QuadrantPainter(tasks, isDark: isDark, isCyberpunk: isCyberpunk),
+            painter: QuadrantPainter(tasks, isDark: isDark, isCyberpunk: isCyberpunk, language: language),
             child: Container(),
           ),
         ),
@@ -372,11 +406,11 @@ class QuadrantPainter extends CustomPainter {
   final List<Task> tasks;
   final bool isDark;
   final bool isCyberpunk;
-  QuadrantPainter(this.tasks, {this.isDark = false, this.isCyberpunk = false});
+  final AppLanguage language;
+  QuadrantPainter(this.tasks, {this.isDark = false, this.isCyberpunk = false, required this.language});
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 顏色依主題切換
     final axisColor = isCyberpunk
         ? _EisenhowerAppState.cyberpunkPrimary
         : (isDark ? Colors.white : Colors.black);
@@ -405,11 +439,11 @@ class QuadrantPainter extends CustomPainter {
       tp.paint(canvas, offset);
     }
     // 橫軸標籤
-    textPainter('不重要', Offset(8, size.height/2-24));
-    textPainter('重要', Offset(size.width-48, size.height/2-24));
+    textPainter(language == AppLanguage.zh ? '不重要' : 'Not Important', Offset(8, size.height/2-24));
+    textPainter(language == AppLanguage.zh ? '重要' : 'Important', Offset(size.width-72, size.height/2-24));
     // 縱軸標籤
-    textPainter('緊急', Offset(size.width/2+8, 8));
-    textPainter('不緊急', Offset(size.width/2+8, size.height-28));
+    textPainter(language == AppLanguage.zh ? '緊急' : 'Urgent', Offset(size.width/2+8, 8));
+    textPainter(language == AppLanguage.zh ? '不緊急' : 'Not Urgent', Offset(size.width/2+8, size.height-28));
     // 畫任務
     for (final t in tasks) {
       // importance, urgency -5~+5 => -6~+6 畫布
@@ -440,7 +474,9 @@ class QuadrantPainter extends CustomPainter {
 class SettingsScreen extends StatelessWidget {
   final AppThemeMode themeMode;
   final void Function(AppThemeMode) onThemeChanged;
-  const SettingsScreen({super.key, required this.themeMode, required this.onThemeChanged});
+  final AppLanguage language;
+  final void Function(AppLanguage) onLanguageChanged;
+  const SettingsScreen({super.key, required this.themeMode, required this.onThemeChanged, required this.language, required this.onLanguageChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -448,30 +484,44 @@ class SettingsScreen extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          const Text('主題模式', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(language == AppLanguage.zh ? '主題模式' : 'Theme Mode', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           RadioListTile<AppThemeMode>(
-            title: const Text('淺色'),
+            title: Text(language == AppLanguage.zh ? '淺色' : 'Light'),
             value: AppThemeMode.light,
             groupValue: themeMode,
             onChanged: (mode) { if (mode != null) onThemeChanged(mode); },
           ),
           RadioListTile<AppThemeMode>(
-            title: const Text('深色'),
+            title: Text(language == AppLanguage.zh ? '深色' : 'Dark'),
             value: AppThemeMode.dark,
             groupValue: themeMode,
             onChanged: (mode) { if (mode != null) onThemeChanged(mode); },
           ),
           RadioListTile<AppThemeMode>(
-            title: const Text('跟隨系統'),
+            title: Text(language == AppLanguage.zh ? '跟隨系統' : 'System'),
             value: AppThemeMode.system,
             groupValue: themeMode,
             onChanged: (mode) { if (mode != null) onThemeChanged(mode); },
           ),
           RadioListTile<AppThemeMode>(
-            title: const Text('賽博朋克2077'),
+            title: Text(language == AppLanguage.zh ? '賽博朋克' : 'Cyberpunk'),
             value: AppThemeMode.cyberpunk,
             groupValue: themeMode,
             onChanged: (mode) { if (mode != null) onThemeChanged(mode); },
+          ),
+          const SizedBox(height: 24),
+          Text(language == AppLanguage.zh ? '語言' : 'Language', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          RadioListTile<AppLanguage>(
+            title: const Text('繁體中文'),
+            value: AppLanguage.zh,
+            groupValue: language,
+            onChanged: (lang) { if (lang != null) onLanguageChanged(lang); },
+          ),
+          RadioListTile<AppLanguage>(
+            title: const Text('English'),
+            value: AppLanguage.en,
+            groupValue: language,
+            onChanged: (lang) { if (lang != null) onLanguageChanged(lang); },
           ),
         ],
       ),
