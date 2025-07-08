@@ -1,5 +1,5 @@
 # Eisenhower Matrix Todo App
-[English readme]()
+[English readme](https://github.com/LightSky10006/EisenhowerApp/blob/main/README_en.md)
 
 艾森豪矩陣待辦事項（Eisenhower Matrix Todo App）
 
@@ -21,7 +21,7 @@
 
 ## 畫面預覽
 
-> 請自行補充 App 截圖
+
 
 ---
 

@@ -20,7 +20,7 @@ A beautiful, modern Eisenhower Matrix todo app built with Flutter.
 
 ## Screenshots
 
-> Please add your own app screenshots here
+
 
 ---
 
