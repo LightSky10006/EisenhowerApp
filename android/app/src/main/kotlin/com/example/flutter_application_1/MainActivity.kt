@@ -1,4 +1,4 @@
-package com.example.flutter_application_1
+package org.lightsky26.eisenhowerapp
 
 import io.flutter.embedding.android.FlutterActivity
 

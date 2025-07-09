@@ -1,6 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart';
+//import 'package:hive_flutter/hive_flutter.dart';
+//import 'package:path_provider/path_provider.dart' as path_provider;
+//part 'task.g.dart';
+import 'package:sqflite/sqflite.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(EisenhowerApp());
 }
 
@@ -9,7 +16,23 @@ class Task {
   int quadrant; // 0:重要且緊急, 1:重要不緊急, 2:不重要但緊急, 3:不重要不緊急
   int importance; // -5~+5
   int urgency; // -5~+5
-  Task(this.title, this.quadrant, {this.importance = 0, this.urgency = 0});
+  int? id;
+  Task(this.title, this.quadrant, {this.importance = 0, this.urgency = 0, this.id});
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'title': title,
+    'quadrant': quadrant,
+    'importance': importance,
+    'urgency': urgency,
+  };
+  factory Task.fromMap(Map<String, dynamic> map) => Task(
+    map['title'],
+    map['quadrant'],
+    importance: map['importance'],
+    urgency: map['urgency'],
+    id: map['id'],
+  );
 }
 
 enum AppThemeMode { light, dark, system, cyberpunk }
@@ -26,6 +49,8 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
   AppLanguage _language = AppLanguage.zh;
   int _currentIndex = 0;
   final List<Task> tasks = [];
+
+  Database? _db;
 
   // 主題色定義集中管理
   static const cyberpunkPrimary = Color(0xFFFFF000); // 螢光黃
@@ -45,10 +70,92 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
     });
   }
 
-  void _deleteTask(Task task) {
-    setState(() {
-      tasks.remove(task);
-    });
+  @override
+  void initState() {
+    super.initState();
+    if (!kIsWeb) {
+      _initDb();
+    }
+  }
+
+  Future<void> _initDb() async {
+    try {
+      if (kIsWeb) return;
+      final dbPath = await getDatabasesPath();
+      final path = join(dbPath, 'tasks.db');
+      _db = await openDatabase(
+        path,
+        version: 1,
+        onCreate: (db, version) async {
+          await db.execute('''CREATE TABLE tasks(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            quadrant INTEGER,
+            importance INTEGER,
+            urgency INTEGER
+          )''');
+        },
+      );
+      await _loadTasks();
+    } catch (e, s) {
+      print('DB INIT ERROR: $e\n$s');
+    }
+  }
+
+  Future<void> _loadTasks() async {
+    try {
+      if (kIsWeb) return;
+      if (_db == null) return;
+      final list = await _db!.query('tasks');
+      setState(() {
+        tasks.clear();
+        tasks.addAll(list.map((e) => Task.fromMap(e)).toList());
+      });
+    } catch (e, s) {
+      print('LOAD TASKS ERROR: $e\n$s');
+    }
+  }
+
+  Future<void> _saveTask(Task task) async {
+    try {
+      if (kIsWeb) {
+        setState(() {
+          if (task.id == null) {
+            task.id = DateTime.now().millisecondsSinceEpoch;
+            tasks.add(task);
+          } else {
+            final idx = tasks.indexWhere((t) => t.id == task.id);
+            if (idx != -1) tasks[idx] = task;
+          }
+        });
+        return;
+      }
+      if (_db == null) return;
+      if (task.id == null) {
+        task.id = await _db!.insert('tasks', task.toMap());
+      } else {
+        await _db!.update('tasks', task.toMap(), where: 'id = ?', whereArgs: [task.id]);
+      }
+      await _loadTasks();
+    } catch (e, s) {
+      print('SAVE TASK ERROR: $e\n$s');
+    }
+  }
+
+  Future<void> _deleteTask(Task task) async {
+    try {
+      if (kIsWeb) {
+        setState(() {
+          tasks.removeWhere((t) => t.id == task.id);
+        });
+        return;
+      }
+      if (_db == null || task.id == null) return;
+      await _db!.delete('tasks', where: 'id = ?', whereArgs: [task.id]);
+      await _loadTasks();
+    } catch (e, s) {
+      print('DELETE TASK ERROR: $e\n$s');
+    }
   }
 
   ThemeMode get materialThemeMode {
@@ -65,7 +172,7 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
   }
 
   ThemeData get cyberpunkTheme => ThemeData(
-        colorScheme: ColorScheme(
+        colorScheme: const ColorScheme(
           brightness: Brightness.light,
           primary: const Color(0xFFFFF000), // 螢光黃
           onPrimary: Colors.black,
@@ -99,10 +206,6 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
     // 直接用 ThemeData，避免 Theme.of(context) 受 Theme 包覆影響
     final theme = isCyberpunk ? cyberpunkTheme : (_themeMode == AppThemeMode.dark ? ThemeData.dark() : ThemeData.light());
     final lang = _language;
-    // dock顏色
-    final bottomBarBg = isCyberpunk ? cyberpunkSurface : theme.colorScheme.surface;
-    final bottomBarSelected = isCyberpunk ? cyberpunkPrimary : theme.colorScheme.primary;
-    final bottomBarUnselected = isCyberpunk ? cyberpunkSecondary : theme.unselectedWidgetColor;
     return MaterialApp(
       title: lang == AppLanguage.zh ? 'Eisenhower Matrix Todo' : 'Eisenhower Matrix Todo',
       theme: ThemeData(
@@ -217,11 +320,10 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
                 controller: dialogController,
                 autofocus: true,
                 decoration: InputDecoration(labelText: lang == AppLanguage.zh ? '輸入待辦事項' : 'Enter todo'),
-                onSubmitted: (value) {
+                onSubmitted: (value) async {
                   if (value.trim().isNotEmpty) {
-                    setState(() {
-                      tasks.add(Task(value.trim(), quadrant, importance: importance, urgency: urgency));
-                    });
+                    final newTask = Task(value.trim(), quadrant, importance: importance, urgency: urgency);
+                    await _saveTask(newTask);
                     Navigator.of(context).pop();
                   }
                 },
@@ -273,11 +375,10 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
               child: Text(lang == AppLanguage.zh ? '取消' : 'Cancel'),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 if (dialogController.text.trim().isNotEmpty) {
-                  setState(() {
-                    tasks.add(Task(dialogController.text.trim(), quadrant, importance: importance, urgency: urgency));
-                  });
+                  final newTask = Task(dialogController.text.trim(), quadrant, importance: importance, urgency: urgency);
+                  await _saveTask(newTask);
                   Navigator.of(context).pop();
                 }
               },
