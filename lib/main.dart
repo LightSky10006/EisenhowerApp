@@ -96,7 +96,8 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
   @override
   Widget build(BuildContext context) {
     final isCyberpunk = _themeMode == AppThemeMode.cyberpunk;
-    final theme = isCyberpunk ? cyberpunkTheme : Theme.of(context);
+    // 直接用 ThemeData，避免 Theme.of(context) 受 Theme 包覆影響
+    final theme = isCyberpunk ? cyberpunkTheme : (_themeMode == AppThemeMode.dark ? ThemeData.dark() : ThemeData.light());
     final lang = _language;
     // dock顏色
     final bottomBarBg = isCyberpunk ? cyberpunkSurface : theme.colorScheme.surface;
@@ -114,41 +115,46 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
       ),
       themeMode: materialThemeMode,
       highContrastTheme: isCyberpunk ? cyberpunkTheme : null,
-      home: Theme(
-        data: theme,
-        child: Scaffold(
-          backgroundColor: isCyberpunk ? cyberpunkBackground : null,
-          body: IndexedStack(
-            index: _currentIndex,
-            children: [
-              EisenhowerListScreen(
-                tasks: tasks,
-                onAdd: _showAddTaskDialog,
-                onDelete: _deleteTask,
-                language: lang,
+      home: Builder(
+        builder: (context) {
+          final effectiveTheme = isCyberpunk ? cyberpunkTheme : Theme.of(context);
+          return Theme(
+            data: effectiveTheme,
+            child: Scaffold(
+              backgroundColor: isCyberpunk ? cyberpunkBackground : null,
+              body: IndexedStack(
+                index: _currentIndex,
+                children: [
+                  EisenhowerListScreen(
+                    tasks: tasks,
+                    onAdd: _showAddTaskDialog,
+                    onDelete: _deleteTask,
+                    language: lang,
+                  ),
+                  QuadrantPlaneScreen(tasks: tasks, isCyberpunk: isCyberpunk, language: lang),
+                  SettingsScreen(
+                    themeMode: _themeMode,
+                    onThemeChanged: _setThemeMode,
+                    language: lang,
+                    onLanguageChanged: _setLanguage,
+                  ),
+                ],
               ),
-              QuadrantPlaneScreen(tasks: tasks, isCyberpunk: isCyberpunk, language: lang),
-              SettingsScreen(
-                themeMode: _themeMode,
-                onThemeChanged: _setThemeMode,
-                language: lang,
-                onLanguageChanged: _setLanguage,
+              bottomNavigationBar: BottomNavigationBar(
+                currentIndex: _currentIndex,
+                onTap: (i) => setState(() => _currentIndex = i),
+                backgroundColor: isCyberpunk ? cyberpunkSurface : Theme.of(context).colorScheme.surface,
+                selectedItemColor: isCyberpunk ? cyberpunkPrimary : Theme.of(context).colorScheme.primary,
+                unselectedItemColor: isCyberpunk ? cyberpunkSecondary : Theme.of(context).unselectedWidgetColor,
+                items: [
+                  BottomNavigationBarItem(icon: const Icon(Icons.list), label: lang == AppLanguage.zh ? '清單' : 'List'),
+                  BottomNavigationBarItem(icon: const Icon(Icons.grid_4x4), label: lang == AppLanguage.zh ? '座標' : 'Plane'),
+                  BottomNavigationBarItem(icon: const Icon(Icons.settings), label: lang == AppLanguage.zh ? '設定' : 'Settings'),
+                ],
               ),
-            ],
-          ),
-          bottomNavigationBar: BottomNavigationBar(
-            currentIndex: _currentIndex,
-            onTap: (i) => setState(() => _currentIndex = i),
-            backgroundColor: bottomBarBg,
-            selectedItemColor: bottomBarSelected,
-            unselectedItemColor: bottomBarUnselected,
-            items: [
-              BottomNavigationBarItem(icon: const Icon(Icons.list), label: lang == AppLanguage.zh ? '清單' : 'List'),
-              BottomNavigationBarItem(icon: const Icon(Icons.grid_4x4), label: lang == AppLanguage.zh ? '座標' : 'Plane'),
-              BottomNavigationBarItem(icon: const Icon(Icons.settings), label: lang == AppLanguage.zh ? '設定' : 'Settings'),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
