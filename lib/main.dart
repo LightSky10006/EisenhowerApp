@@ -5,6 +5,7 @@ import 'package:path/path.dart';
 //import 'package:path_provider/path_provider.dart' as path_provider;
 //part 'task.g.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -62,12 +63,14 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
     setState(() {
       _themeMode = mode;
     });
+    _savePreferences();
   }
 
   void _setLanguage(AppLanguage lang) {
     setState(() {
       _language = lang;
     });
+    _savePreferences();
   }
 
   @override
@@ -76,6 +79,7 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
     if (!kIsWeb) {
       _initDb();
     }
+    _loadPreferences();
   }
 
   Future<void> _initDb() async {
@@ -157,6 +161,21 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
       print('DELETE TASK ERROR: $e\n$s');
     }
   }
+  Future<void> _loadPreferences() async {
+  final prefs = await SharedPreferences.getInstance();
+  final themeIndex = prefs.getInt('themeMode') ?? 0;
+  final langIndex = prefs.getInt('language') ?? 0;
+  setState(() {
+    _themeMode = AppThemeMode.values[themeIndex];
+    _language = AppLanguage.values[langIndex];
+  });
+}
+
+Future<void> _savePreferences() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setInt('themeMode', _themeMode.index);
+  await prefs.setInt('language', _language.index);
+}
 
   ThemeMode get materialThemeMode {
     switch (_themeMode) {
