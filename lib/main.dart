@@ -374,7 +374,7 @@ Future<void> _savePreferences() async {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  const Text('重要程度'),
+                  Text(lang == AppLanguage.zh ? '重要程度' : 'Importance'),
                   Expanded(
                     child: Slider(
                       value: importance.toDouble(),
@@ -388,12 +388,12 @@ Future<void> _savePreferences() async {
                       },
                     ),
                   ),
-                  Text(lang == AppLanguage.zh ? '$importance' : '$importance'),
+                  Text(importance.toString()),
                 ],
               ),
               Row(
                 children: [
-                  const Text('緊急程度'),
+                  Text(lang == AppLanguage.zh ? '緊急程度' : 'Urgency'),
                   Expanded(
                     child: Slider(
                       value: urgency.toDouble(),
@@ -407,7 +407,7 @@ Future<void> _savePreferences() async {
                       },
                     ),
                   ),
-                  Text(lang == AppLanguage.zh ? '$urgency' : '$urgency'),
+                  Text(urgency.toString()),
                 ],
               ),
             ],
