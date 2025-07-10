@@ -33,27 +33,30 @@ class _QuadrantPlaneScreenState extends State<QuadrantPlaneScreen> {
     final margin = 30.0;
     final plotWidth = _lastSize.width - 2 * margin;
     final plotHeight = _lastSize.height - 2 * margin;
-    final centerX = _lastSize.width / 2;
-    final centerY = _lastSize.height / 2;
     
-    // 計算座標系統的實際範圍（基於畫面比例）
+    // 動態計算座標範圍 - 與 QuadrantPainter 保持一致
+    final baseRange = 10.0;
     final aspectRatio = plotWidth / plotHeight;
-    double xRange = 10.0;
-    double yRange = 10.0;
     
-    if (aspectRatio > 1) {
-      xRange = 10.0 * aspectRatio;
-    } else {
-      yRange = 10.0 / aspectRatio;
-    }
+    // 座標範圍需要包含縮放和偏移
+    final scaleReciprocalX = aspectRatio * baseRange / _scale;
+    final scaleReciprocalY = baseRange / _scale;
     
-    // 考慮縮放和平移的逆變換
-    final transformedX = (screenPos.dx - centerX - _offset.dx) / _scale + centerX;
-    final transformedY = (screenPos.dy - centerY - _offset.dy) / _scale + centerY;
+    // 考慮偏移量
+    final offsetX = -_offset.dx * scaleReciprocalX * 2 / plotWidth;
+    final offsetY = _offset.dy * scaleReciprocalY * 2 / plotHeight;
     
-    // 轉換為邏輯座標
-    final logicalX = (transformedX - centerX) / (plotWidth / xRange);
-    final logicalY = -(transformedY - centerY) / (plotHeight / yRange);
+    final minX = -scaleReciprocalX + offsetX;
+    final maxX = scaleReciprocalX + offsetX;
+    final minY = -scaleReciprocalY + offsetY;
+    final maxY = scaleReciprocalY + offsetY;
+    
+    final rangeX = maxX - minX;
+    final rangeY = maxY - minY;
+    
+    // 轉換螢幕座標到邏輯座標
+    final logicalX = minX + (screenPos.dx - margin) / plotWidth * rangeX;
+    final logicalY = maxY - (screenPos.dy - margin) / plotHeight * rangeY;
     
     return Offset(logicalX, logicalY);
   }
@@ -61,7 +64,9 @@ class _QuadrantPlaneScreenState extends State<QuadrantPlaneScreen> {
   // 檢查點擊是否在任務點上
   Task? _hitTestTask(Offset screenPos) {
     final logicalPos = _screenToLogicalCoordinate(screenPos);
-    const hitRadius = 0.8; // 在邏輯座標系中的點擊半徑
+    
+    // 動態調整點擊半徑，考慮縮放因子
+    final hitRadius = 0.8 / _scale; // 縮放時點擊半徑也要調整
     
     for (final task in widget.tasks) {
       // 正確的座標映射：importance 對應 X 軸，urgency 對應 Y 軸
@@ -92,14 +97,15 @@ class _QuadrantPlaneScreenState extends State<QuadrantPlaneScreen> {
       if (widget.onAdd != null) {
         final logicalPos = _screenToLogicalCoordinate(_lastTapPosition!);
         
-        // 檢查座標是否超出範圍 (-5 到 +5)
-        if (logicalPos.dx.abs() > 5.0 || logicalPos.dy.abs() > 5.0) {
-          // 超出範圍，不允許新增，可以選擇顯示提示
+        // 檢查座標是否超出合理範圍
+        // 限制在可見範圍內，但不超過合理的任務值範圍
+        final maxRange = 10.0;
+        if (logicalPos.dx.abs() > maxRange || logicalPos.dy.abs() > maxRange) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(widget.language == AppLanguage.zh 
-                ? '請在有效範圍內點擊（-5 到 +5）' 
-                : 'Please click within valid range (-5 to +5)'),
+                ? '請在有效範圍內點擊（-10 到 +10）' 
+                : 'Please click within valid range (-10 to +10)'),
               duration: Duration(seconds: 2),
             ),
           );
