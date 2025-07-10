@@ -280,7 +280,13 @@ Future<void> _savePreferences() async {
                   onDelete: _deleteTask,
                   language: lang,
                 ),
-                QuadrantPlaneScreen(tasks: tasks, isCyberpunk: isCyberpunk, language: lang),
+                QuadrantPlaneScreen(
+                  tasks: tasks, 
+                  isCyberpunk: isCyberpunk, 
+                  language: lang,
+                  onAdd: _showAddTaskDialog,
+                  onEdit: _showEditTaskDialog,
+                ),
                 SettingsScreen(
                   themeMode: _themeMode,
                   onThemeChanged: _setThemeMode,
@@ -307,52 +313,63 @@ Future<void> _savePreferences() async {
     );
   }
 
-  Future<void> _showAddTaskDialog(BuildContext context, int quadrant) async {
+  Future<void> _showAddTaskDialog(BuildContext context, int quadrant, {double? coordinateImportance, double? coordinateUrgency}) async {
     final TextEditingController dialogController = TextEditingController();
     // 根據象限設定權重範圍
     int minImportance = -5, maxImportance = 5, minUrgency = -5, maxUrgency = 5;
     int defaultImportance = 0, defaultUrgency = 0;
-    switch (quadrant) {
-      case 0: // 重要且緊急
-        minImportance = 1;
-        maxImportance = 5;
-        minUrgency = 1;
-        maxUrgency = 5;
-        defaultImportance = 3;
-        defaultUrgency = 3;
-        break;
-      case 1: // 重要不緊急
-        minImportance = 1;
-        maxImportance = 5;
-        minUrgency = -5;
-        maxUrgency = 0;
-        defaultImportance = 3;
-        defaultUrgency = -3;
-        break;
-      case 2: // 不重要但緊急
-        minImportance = -5;
-        maxImportance = 0;
-        minUrgency = 1;
-        maxUrgency = 5;
-        defaultImportance = -3;
-        defaultUrgency = 3;
-        break;
-      case 3: // 不重要不緊急
-        minImportance = -5;
-        maxImportance = 0;
-        minUrgency = -5;
-        maxUrgency = 0;
-        defaultImportance = -3;
-        defaultUrgency = -3;
-        break;
+    
+    // 如果有提供座標值，使用座標值作為預設值
+    if (coordinateImportance != null && coordinateUrgency != null) {
+      defaultImportance = coordinateImportance.round().clamp(-5, 5);
+      defaultUrgency = coordinateUrgency.round().clamp(-5, 5);
+    } else {
+      // 否則使用象限預設值
+      switch (quadrant) {
+        case 0: // 重要且緊急
+          minImportance = 1;
+          maxImportance = 5;
+          minUrgency = 1;
+          maxUrgency = 5;
+          defaultImportance = 3;
+          defaultUrgency = 3;
+          break;
+        case 1: // 重要不緊急
+          minImportance = 1;
+          maxImportance = 5;
+          minUrgency = -5;
+          maxUrgency = 0;
+          defaultImportance = 3;
+          defaultUrgency = -3;
+          break;
+        case 2: // 不重要但緊急
+          minImportance = -5;
+          maxImportance = 0;
+          minUrgency = 1;
+          maxUrgency = 5;
+          defaultImportance = -3;
+          defaultUrgency = 3;
+          break;
+        case 3: // 不重要不緊急
+          minImportance = -5;
+          maxImportance = 0;
+          minUrgency = -5;
+          maxUrgency = 0;
+          defaultImportance = -3;
+          defaultUrgency = -3;
+          break;
+      }
     }
+    
     int importance = defaultImportance;
     int urgency = defaultUrgency;
     final lang = _language;
     final quadrantTitle = lang == AppLanguage.zh
         ? EisenhowerListScreen.quadrantTitlesZh[quadrant]
         : EisenhowerListScreen.quadrantTitlesEn[quadrant];
-    final addTitle = lang == AppLanguage.zh ? '新增到「$quadrantTitle」' : 'Add to "$quadrantTitle"';
+    final addTitle = coordinateImportance != null && coordinateUrgency != null
+        ? (lang == AppLanguage.zh ? '新增待辦事項 ($defaultImportance, $defaultUrgency)' : 'Add Task ($defaultImportance, $defaultUrgency)')
+        : (lang == AppLanguage.zh ? '新增到「$quadrantTitle」' : 'Add to "$quadrantTitle"');
     await showDialog(
       context: context,
       builder: (context) {
@@ -591,7 +608,7 @@ class EisenhowerListScreen extends StatelessWidget {
     'Not Important, Not Urgent',
   ];
   final List<Task> tasks;
-  final Future<void> Function(BuildContext, int quadrant) onAdd;
+  final Future<void> Function(BuildContext, int quadrant, {double? coordinateImportance, double? coordinateUrgency}) onAdd;
   final Future<void> Function(BuildContext, Task) onEdit;
   final void Function(Task) onDelete;
   final AppLanguage language;
@@ -711,7 +728,16 @@ class QuadrantPlaneScreen extends StatefulWidget {
   final List<Task> tasks;
   final bool isCyberpunk;
   final AppLanguage language;
-  const QuadrantPlaneScreen({super.key, required this.tasks, this.isCyberpunk = false, required this.language});
+  final Future<void> Function(BuildContext, int, {double? coordinateImportance, double? coordinateUrgency})? onAdd;
+  final Future<void> Function(BuildContext, Task)? onEdit;
+  const QuadrantPlaneScreen({
+    super.key, 
+    required this.tasks, 
+    this.isCyberpunk = false, 
+    required this.language,
+    this.onAdd,
+    this.onEdit,
+  });
 
   @override
   State<QuadrantPlaneScreen> createState() => _QuadrantPlaneScreenState();
@@ -720,74 +746,181 @@ class QuadrantPlaneScreen extends StatefulWidget {
 class _QuadrantPlaneScreenState extends State<QuadrantPlaneScreen> {
   double _scale = 1.0;
   Offset _offset = Offset.zero;
-  double _baseScale = 1.0;
-  Offset _baseOffset = Offset.zero;
+  late Size _lastSize;
+  Offset? _lastTapPosition; // 記錄最後一次點擊位置
+  
+  // 將螢幕座標轉換為邏輯座標
+  Offset _screenToLogicalCoordinate(Offset screenPos) {
+    final margin = 30.0;
+    final plotWidth = _lastSize.width - 2 * margin;
+    final plotHeight = _lastSize.height - 2 * margin;
+    final centerX = _lastSize.width / 2;
+    final centerY = _lastSize.height / 2;
+    
+    // 計算座標系統的實際範圍（基於畫面比例）
+    final aspectRatio = plotWidth / plotHeight;
+    double xRange = 10.0;
+    double yRange = 10.0;
+    
+    if (aspectRatio > 1) {
+      xRange = 10.0 * aspectRatio;
+    } else {
+      yRange = 10.0 / aspectRatio;
+    }
+    
+    // 考慮縮放和平移的逆變換
+    final transformedX = (screenPos.dx - centerX - _offset.dx) / _scale + centerX;
+    final transformedY = (screenPos.dy - centerY - _offset.dy) / _scale + centerY;
+    
+    // 轉換為邏輯座標
+    final logicalX = (transformedX - centerX) / (plotWidth / xRange);
+    final logicalY = -(transformedY - centerY) / (plotHeight / yRange);
+    
+    return Offset(logicalX, logicalY);
+  }
+  
+  // 檢查點擊是否在任務點上
+  Task? _hitTestTask(Offset screenPos) {
+    final logicalPos = _screenToLogicalCoordinate(screenPos);
+    const hitRadius = 0.8; // 在邏輯座標系中的點擊半徑
+    
+    for (final task in widget.tasks) {
+      // 正確的座標映射：importance 對應 X 軸，urgency 對應 Y 軸
+      final taskLogicalX = task.importance.toDouble();
+      final taskLogicalY = task.urgency.toDouble();
+      
+      final distance = (Offset(taskLogicalX, taskLogicalY) - logicalPos).distance;
+      if (distance <= hitRadius) {
+        return task;
+      }
+    }
+    return null;
+  }
+  
+  // 處理點擊事件
+  void _handleTap(BuildContext context) async {
+    if (_lastTapPosition == null) return;
+    
+    final tappedTask = _hitTestTask(_lastTapPosition!);
+    
+    if (tappedTask != null) {
+      // 點擊到任務點，編輯任務
+      if (widget.onEdit != null) {
+        await widget.onEdit!(context, tappedTask);
+      }
+    } else {
+      // 點擊空白處，新增任務
+      if (widget.onAdd != null) {
+        final logicalPos = _screenToLogicalCoordinate(_lastTapPosition!);
+        
+        // 檢查座標是否超出範圍 (-5 到 +5)
+        if (logicalPos.dx.abs() > 5.0 || logicalPos.dy.abs() > 5.0) {
+          // 超出範圍，不允許新增，可以選擇顯示提示
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(widget.language == AppLanguage.zh 
+                ? '請在有效範圍內點擊（-5 到 +5）' 
+                : 'Please click within valid range (-5 to +5)'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
+        
+        // 將邏輯座標轉換回象限索引
+        int quadrantIndex = 0;
+        if (logicalPos.dx >= 0 && logicalPos.dy >= 0) {
+          quadrantIndex = 0; // 右上：重要且緊急
+        } else if (logicalPos.dx < 0 && logicalPos.dy >= 0) {
+          quadrantIndex = 1; // 左上：重要不緊急
+        } else if (logicalPos.dx < 0 && logicalPos.dy < 0) {
+          quadrantIndex = 3; // 左下：不重要不緊急
+        } else {
+          quadrantIndex = 2; // 右下：不重要但緊急
+        }
+        
+        // 傳遞實際的座標值作為重要程度和緊急程度
+        await widget.onAdd!(context, quadrantIndex, 
+          coordinateImportance: logicalPos.dx, 
+          coordinateUrgency: logicalPos.dy);
+      }
+    }
+  }
   
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return SafeArea(
-      child: Center(
-        child: AspectRatio(
-          aspectRatio: 1,
-          child: GestureDetector(
-            onScaleStart: (details) {
-              // 記錄開始縮放時的狀態
-              _baseScale = _scale;
-              _baseOffset = _offset;
-            },
-            onScaleUpdate: (details) {
-              setState(() {
-                // 縮放計算
-                final newScale = _baseScale * details.scale;
-                _scale = newScale.clamp(0.5, 5.0);
-                
-                // 平移計算 - 以焦點為中心
-                _offset = _baseOffset + details.focalPointDelta;
-                
-                // 限制平移範圍
-                final maxOffset = 300.0 * _scale;
-                _offset = Offset(
-                  _offset.dx.clamp(-maxOffset, maxOffset),
-                  _offset.dy.clamp(-maxOffset, maxOffset),
-                );
-              });
-            },
-            onDoubleTap: () {
-              // 雙擊重置 - 動畫效果
-              setState(() {
-                _scale = 1.0;
-                _offset = Offset.zero;
-              });
-            },
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: widget.isCyberpunk 
-                    ? _EisenhowerAppState.cyberpunkPrimary.withOpacity(0.3)
-                    : (isDark ? Colors.white.withOpacity(0.3) : Colors.grey.withOpacity(0.3)),
-                  width: 1,
-                ),
-                borderRadius: BorderRadius.circular(8),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _lastSize = Size(constraints.maxWidth, constraints.maxHeight);
+        return GestureDetector(
+          onTapDown: (details) {
+            // 記錄點擊位置
+            _lastTapPosition = details.localPosition;
+          },
+          onTap: () => _handleTap(context),
+          onScaleStart: (details) {
+            // 手勢開始時不需要特別處理
+          },
+          onScaleUpdate: (details) {
+            setState(() {
+              // 計算縮放中心
+              final focalPoint = details.focalPoint;
+              final center = Offset(_lastSize.width / 2, _lastSize.height / 2);
+              
+              // 記錄縮放前的狀態
+              final oldScale = _scale;
+              final oldOffset = _offset;
+              
+              // 更新縮放
+              _scale = (_scale * details.scale).clamp(0.3, 8.0);
+              
+              // 計算縮放導致的偏移變化
+              final scaleChange = _scale / oldScale;
+              final focalPointInCanvas = focalPoint - center - oldOffset;
+              final newFocalPointInCanvas = focalPointInCanvas * scaleChange;
+              final scaleDelta = newFocalPointInCanvas - focalPointInCanvas;
+              
+              // 更新偏移：包含縮放補償和平移
+              _offset = oldOffset - scaleDelta + details.focalPointDelta;
+              
+              // 限制平移範圍
+              final maxOffset = 800.0 / _scale;
+              _offset = Offset(
+                _offset.dx.clamp(-maxOffset, maxOffset),
+                _offset.dy.clamp(-maxOffset, maxOffset),
+              );
+            });
+          },
+          onDoubleTap: () {
+            // 雙擊重置
+            setState(() {
+              _scale = 1.0;
+              _offset = Offset.zero;
+            });
+          },
+          child: Container(
+            width: double.infinity,
+            height: double.infinity,
+            decoration: BoxDecoration(
+              color: widget.isCyberpunk 
+                ? _EisenhowerAppState.cyberpunkBackground
+                : (isDark ? Color(0xFF1E1E1E) : Color(0xFFFAFAFA)),
+            ),
+            child: CustomPaint(
+              painter: QuadrantPainter(
+                widget.tasks, 
+                isDark: isDark, 
+                isCyberpunk: widget.isCyberpunk, 
+                language: widget.language,
+                scale: _scale,
+                offset: _offset,
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: CustomPaint(
-                  painter: QuadrantPainter(
-                    widget.tasks, 
-                    isDark: isDark, 
-                    isCyberpunk: widget.isCyberpunk, 
-                    language: widget.language,
-                    scale: _scale,
-                    offset: _offset,
-                  ),
-                  child: Container(),
-                ),
-              ),
+              child: Container(),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -834,12 +967,25 @@ class QuadrantPainter extends CustomPainter {
         ? _EisenhowerAppState.cyberpunkBackground
         : (isDark ? Color(0xFF1E1E1E) : Color(0xFFFAFAFA));
 
-    // 畫布設定
-    const margin = 50.0;
+    // 畫布設定 - 使用整個畫面
+    final margin = 30.0;
     final plotWidth = size.width - 2 * margin;
     final plotHeight = size.height - 2 * margin;
-    final centerX = margin + plotWidth / 2;
-    final centerY = margin + plotHeight / 2;
+    final centerX = size.width / 2;
+    final centerY = size.height / 2;
+    
+    // 計算座標系統的實際範圍（基於畫面比例）
+    final aspectRatio = plotWidth / plotHeight;
+    double xRange = 10.0; // 基本範圍 -5 到 +5
+    double yRange = 10.0;
+    
+    if (aspectRatio > 1) {
+      // 寬屏，擴展 X 軸範圍
+      xRange = 10.0 * aspectRatio;
+    } else {
+      // 高屏，擴展 Y 軸範圍
+      yRange = 10.0 / aspectRatio;
+    }
 
     // 1. 背景
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), 
@@ -852,19 +998,19 @@ class QuadrantPainter extends CustomPainter {
     canvas.translate(-centerX, -centerY);
 
     // 2. 細網格線（0.5單位間隔）
-    _drawMinorGrid(canvas, size, margin, plotWidth, plotHeight, minorGridColor);
+    _drawMinorGrid(canvas, size, margin, plotWidth, plotHeight, minorGridColor, xRange, yRange);
 
     // 3. 主網格線（1單位間隔）
-    _drawMajorGrid(canvas, size, margin, plotWidth, plotHeight, gridColor);
+    _drawMajorGrid(canvas, size, margin, plotWidth, plotHeight, gridColor, xRange, yRange);
 
     // 4. 象限背景色
-    _drawQuadrantBackgrounds(canvas, margin, plotWidth, plotHeight, isDark, isCyberpunk);
+    _drawQuadrantBackgrounds(canvas, margin, plotWidth, plotHeight, isDark, isCyberpunk, centerX, centerY);
 
     // 5. 座標軸
     _drawAxes(canvas, centerX, centerY, plotWidth, plotHeight, axisColor);
 
     // 6. 刻度和數值
-    _drawTicks(canvas, centerX, centerY, plotWidth, plotHeight, axisColor, labelColor);
+    _drawTicks(canvas, centerX, centerY, plotWidth, plotHeight, axisColor, labelColor, xRange, yRange);
 
     // 7. 軸標籤
     _drawAxisLabels(canvas, centerX, centerY, plotWidth, plotHeight, labelColor);
@@ -873,49 +1019,74 @@ class QuadrantPainter extends CustomPainter {
     _drawQuadrantLabels(canvas, centerX, centerY, plotWidth, plotHeight, quadrantLabelColor);
 
     // 9. 任務點
-    _drawTasks(canvas, margin, plotWidth, plotHeight, pointColor, labelColor, axisColor);
-
-    // 10. 邊框
-    _drawBorder(canvas, margin, plotWidth, plotHeight, axisColor.withOpacity(0.6));
+    _drawTasks(canvas, margin, plotWidth, plotHeight, pointColor, labelColor, axisColor, xRange, yRange);
 
     canvas.restore();
   }
 
-  void _drawMinorGrid(Canvas canvas, Size size, double margin, double plotWidth, double plotHeight, Color color) {
+  void _drawMinorGrid(Canvas canvas, Size size, double margin, double plotWidth, double plotHeight, Color color, double xRange, double yRange) {
     final paint = Paint()
       ..color = color
       ..strokeWidth = 0.5 / scale;
 
-    // 每 0.5 單位畫一條線
-    for (double i = -5; i <= 5; i += 0.5) {
+    final centerX = size.width / 2;
+    final centerY = size.height / 2;
+    
+    // 計算網格間隔
+    final xStep = plotWidth / xRange;
+    final yStep = plotHeight / yRange;
+    
+    // 繪製垂直網格線
+    for (double i = -xRange/2; i <= xRange/2; i += 0.5) {
       if (i == 0) continue; // 跳過中心軸
-      // 垂直線
-      final x = margin + (i + 5) * plotWidth / 10;
-      canvas.drawLine(Offset(x, margin), Offset(x, margin + plotHeight), paint);
-      // 水平線
-      final y = margin + (5 - i) * plotHeight / 10;
-      canvas.drawLine(Offset(margin, y), Offset(margin + plotWidth, y), paint);
+      final x = centerX + i * xStep;
+      if (x >= margin && x <= size.width - margin) {
+        canvas.drawLine(Offset(x, margin), Offset(x, size.height - margin), paint);
+      }
+    }
+    
+    // 繪製水平網格線
+    for (double i = -yRange/2; i <= yRange/2; i += 0.5) {
+      if (i == 0) continue; // 跳過中心軸
+      final y = centerY - i * yStep;
+      if (y >= margin && y <= size.height - margin) {
+        canvas.drawLine(Offset(margin, y), Offset(size.width - margin, y), paint);
+      }
     }
   }
 
-  void _drawMajorGrid(Canvas canvas, Size size, double margin, double plotWidth, double plotHeight, Color color) {
+  void _drawMajorGrid(Canvas canvas, Size size, double margin, double plotWidth, double plotHeight, Color color, double xRange, double yRange) {
     final paint = Paint()
       ..color = color
       ..strokeWidth = 1.0 / scale;
 
-    // 每 1 單位畫一條線
-    for (int i = -5; i <= 5; i++) {
+    final centerX = size.width / 2;
+    final centerY = size.height / 2;
+    
+    // 計算網格間隔
+    final xStep = plotWidth / xRange;
+    final yStep = plotHeight / yRange;
+    
+    // 繪製垂直網格線
+    for (int i = -(xRange/2).floor(); i <= (xRange/2).floor(); i++) {
       if (i == 0) continue; // 跳過中心軸
-      // 垂直線
-      final x = margin + (i + 5) * plotWidth / 10;
-      canvas.drawLine(Offset(x, margin), Offset(x, margin + plotHeight), paint);
-      // 水平線
-      final y = margin + (5 - i) * plotHeight / 10;
-      canvas.drawLine(Offset(margin, y), Offset(margin + plotWidth, y), paint);
+      final x = centerX + i * xStep;
+      if (x >= margin && x <= size.width - margin) {
+        canvas.drawLine(Offset(x, margin), Offset(x, size.height - margin), paint);
+      }
+    }
+    
+    // 繪製水平網格線
+    for (int i = -(yRange/2).floor(); i <= (yRange/2).floor(); i++) {
+      if (i == 0) continue; // 跳過中心軸
+      final y = centerY - i * yStep;
+      if (y >= margin && y <= size.height - margin) {
+        canvas.drawLine(Offset(margin, y), Offset(size.width - margin, y), paint);
+      }
     }
   }
 
-  void _drawQuadrantBackgrounds(Canvas canvas, double margin, double plotWidth, double plotHeight, bool isDark, bool isCyberpunk) {
+  void _drawQuadrantBackgrounds(Canvas canvas, double margin, double plotWidth, double plotHeight, bool isDark, bool isCyberpunk, double centerX, double centerY) {
     // 淺色背景區分象限
     final colors = [
       (isCyberpunk ? _EisenhowerAppState.cyberpunkPrimary : Colors.red).withOpacity(0.03),
@@ -926,10 +1097,10 @@ class QuadrantPainter extends CustomPainter {
 
     // 象限矩形：右上、右下、左上、左下
     final quadrants = [
-      Rect.fromLTWH(margin + plotWidth/2, margin, plotWidth/2, plotHeight/2),
-      Rect.fromLTWH(margin + plotWidth/2, margin + plotHeight/2, plotWidth/2, plotHeight/2),
-      Rect.fromLTWH(margin, margin, plotWidth/2, plotHeight/2),
-      Rect.fromLTWH(margin, margin + plotHeight/2, plotWidth/2, plotHeight/2),
+      Rect.fromLTWH(centerX, margin, (plotWidth + 2*margin - centerX), (centerY - margin)), // 右上
+      Rect.fromLTWH(centerX, centerY, (plotWidth + 2*margin - centerX), (plotHeight + 2*margin - centerY)), // 右下
+      Rect.fromLTWH(margin, margin, (centerX - margin), (centerY - margin)), // 左上
+      Rect.fromLTWH(margin, centerY, (centerX - margin), (plotHeight + 2*margin - centerY)), // 左下
     ];
 
     for (int i = 0; i < 4; i++) {
@@ -969,39 +1140,47 @@ class QuadrantPainter extends CustomPainter {
     canvas.drawPath(yArrow, arrowPaint);
   }
 
-  void _drawTicks(Canvas canvas, double centerX, double centerY, double plotWidth, double plotHeight, Color axisColor, Color labelColor) {
+  void _drawTicks(Canvas canvas, double centerX, double centerY, double plotWidth, double plotHeight, Color axisColor, Color labelColor, double xRange, double yRange) {
     final tickPaint = Paint()
       ..color = axisColor
       ..strokeWidth = 1.5 / scale;
     final tickSize = 8.0 / scale;
     final fontSize = (11.0 / scale).clamp(8.0, 16.0);
 
+    // 計算刻度間隔
+    final xStep = plotWidth / xRange;
+    final yStep = plotHeight / yRange;
+
     // X軸刻度
-    for (int i = -5; i <= 5; i++) {
+    for (int i = -(xRange/2).floor(); i <= (xRange/2).floor(); i++) {
       if (i == 0) continue;
-      final x = centerX + i * plotWidth / 10;
-      canvas.drawLine(Offset(x, centerY - tickSize/2), Offset(x, centerY + tickSize/2), tickPaint);
-      
-      // 刻度標籤
-      final tp = TextPainter(
-        text: TextSpan(text: i.toString(), style: TextStyle(fontSize: fontSize, color: labelColor, fontWeight: FontWeight.w500)),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, Offset(x - tp.width/2, centerY + tickSize + 4 / scale));
+      final x = centerX + i * xStep;
+      if (x >= centerX - plotWidth/2 && x <= centerX + plotWidth/2) {
+        canvas.drawLine(Offset(x, centerY - tickSize/2), Offset(x, centerY + tickSize/2), tickPaint);
+        
+        // 刻度標籤
+        final tp = TextPainter(
+          text: TextSpan(text: i.toString(), style: TextStyle(fontSize: fontSize, color: labelColor, fontWeight: FontWeight.w500)),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tp.paint(canvas, Offset(x - tp.width/2, centerY + tickSize + 4 / scale));
+      }
     }
 
     // Y軸刻度
-    for (int i = -5; i <= 5; i++) {
+    for (int i = -(yRange/2).floor(); i <= (yRange/2).floor(); i++) {
       if (i == 0) continue;
-      final y = centerY - i * plotHeight / 10;
-      canvas.drawLine(Offset(centerX - tickSize/2, y), Offset(centerX + tickSize/2, y), tickPaint);
-      
-      // 刻度標籤
-      final tp = TextPainter(
-        text: TextSpan(text: i.toString(), style: TextStyle(fontSize: fontSize, color: labelColor, fontWeight: FontWeight.w500)),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, Offset(centerX - tickSize - tp.width - 4 / scale, y - tp.height/2));
+      final y = centerY - i * yStep;
+      if (y >= centerY - plotHeight/2 && y <= centerY + plotHeight/2) {
+        canvas.drawLine(Offset(centerX - tickSize/2, y), Offset(centerX + tickSize/2, y), tickPaint);
+        
+        // 刻度標籤
+        final tp = TextPainter(
+          text: TextSpan(text: i.toString(), style: TextStyle(fontSize: fontSize, color: labelColor, fontWeight: FontWeight.w500)),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tp.paint(canvas, Offset(centerX - tickSize - tp.width - 4 / scale, y - tp.height/2));
+      }
     }
 
     // 原點
@@ -1060,14 +1239,22 @@ class QuadrantPainter extends CustomPainter {
     }
   }
 
-  void _drawTasks(Canvas canvas, double margin, double plotWidth, double plotHeight, Color pointColor, Color labelColor, Color axisColor) {
+  void _drawTasks(Canvas canvas, double margin, double plotWidth, double plotHeight, Color pointColor, Color labelColor, Color axisColor, double xRange, double yRange) {
     // 根據縮放調整點大小和字體大小
     final pointSize = (6.0 / scale).clamp(3.0, 10.0);
     final fontSize = (11.0 / scale).clamp(8.0, 16.0);
     
+    final centerX = plotWidth / 2 + margin;
+    final centerY = plotHeight / 2 + margin;
+    
+    // 計算單位步長
+    final xStep = plotWidth / xRange;
+    final yStep = plotHeight / yRange;
+    
     for (final task in tasks) {
-      final x = margin + (task.importance + 5) * plotWidth / 10;
-      final y = margin + (5 - task.urgency) * plotHeight / 10;
+      // 將任務的重要性和緊急程度映射到畫布座標
+      final x = centerX + task.importance * xStep;
+      final y = centerY - task.urgency * yStep;
 
       // 任務點陰影
       canvas.drawCircle(Offset(x + 1, y + 1), pointSize + 1, Paint()..color = Colors.black.withOpacity(0.2));
@@ -1118,14 +1305,6 @@ class QuadrantPainter extends CustomPainter {
       // 標籤文字
       tp.paint(canvas, Offset(x - tp.width/2, y - tp.height - labelOffset + labelPadding/2));
     }
-  }
-
-  void _drawBorder(Canvas canvas, double margin, double plotWidth, double plotHeight, Color color) {
-    final borderPaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2 / scale;
-    canvas.drawRect(Rect.fromLTWH(margin, margin, plotWidth, plotHeight), borderPaint);
   }
 
   @override
