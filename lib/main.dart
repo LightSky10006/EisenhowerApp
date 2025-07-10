@@ -275,6 +275,7 @@ Future<void> _savePreferences() async {
                 EisenhowerListScreen(
                   tasks: tasks,
                   onAdd: _showAddTaskDialog,
+                  onEdit: _showEditTaskDialog,
                   onDelete: _deleteTask,
                   language: lang,
                 ),
@@ -432,6 +433,147 @@ Future<void> _savePreferences() async {
       },
     );
   }
+
+  Future<void> _showEditTaskDialog(BuildContext context, Task task) async {
+    final TextEditingController dialogController = TextEditingController(text: task.title);
+    final originalQuadrant = task.quadrant;
+    
+    // 根據象限設定權重範圍
+    int minImportance = -5, maxImportance = 5, minUrgency = -5, maxUrgency = 5;
+    switch (originalQuadrant) {
+      case 0: // 重要且緊急
+        minImportance = 1;
+        maxImportance = 5;
+        minUrgency = 1;
+        maxUrgency = 5;
+        break;
+      case 1: // 重要不緊急
+        minImportance = 1;
+        maxImportance = 5;
+        minUrgency = -5;
+        maxUrgency = 0;
+        break;
+      case 2: // 不重要但緊急
+        minImportance = -5;
+        maxImportance = 0;
+        minUrgency = 1;
+        maxUrgency = 5;
+        break;
+      case 3: // 不重要不緊急
+        minImportance = -5;
+        maxImportance = 0;
+        minUrgency = -5;
+        maxUrgency = 0;
+        break;
+    }
+    
+    int importance = task.importance;
+    int urgency = task.urgency;
+    final lang = _language;
+    final quadrantTitle = lang == AppLanguage.zh
+        ? EisenhowerListScreen.quadrantTitlesZh[originalQuadrant]
+        : EisenhowerListScreen.quadrantTitlesEn[originalQuadrant];
+    final editTitle = lang == AppLanguage.zh ? '修改「$quadrantTitle」事項' : 'Edit "$quadrantTitle" Task';
+    
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text(editTitle),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: dialogController,
+                    autofocus: true,
+                    decoration: InputDecoration(labelText: lang == AppLanguage.zh ? '修改待辦事項' : 'Edit todo'),
+                    onSubmitted: (value) async {
+                      if (value.trim().isNotEmpty) {
+                        task.title = value.trim();
+                        task.importance = importance;
+                        task.urgency = urgency;
+                        await _saveTask(task);
+                        Navigator.of(context).pop();
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Text(lang == AppLanguage.zh ? '重要程度' : 'Importance'),
+                      Expanded(
+                        child: Slider(
+                          value: importance.toDouble(),
+                          min: minImportance.toDouble(),
+                          max: maxImportance.toDouble(),
+                          divisions: (maxImportance-minImportance),
+                          label: importance.toString(),
+                          onChanged: (v) {
+                            setDialogState(() {
+                              importance = v.round();
+                            });
+                          },
+                        ),
+                      ),
+                      Text(importance.toString()),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Text(lang == AppLanguage.zh ? '緊急程度' : 'Urgency'),
+                      Expanded(
+                        child: Slider(
+                          value: urgency.toDouble(),
+                          min: minUrgency.toDouble(),
+                          max: maxUrgency.toDouble(),
+                          divisions: (maxUrgency-minUrgency),
+                          label: urgency.toString(),
+                          onChanged: (v) {
+                            setDialogState(() {
+                              urgency = v.round();
+                            });
+                          },
+                        ),
+                      ),
+                      Text(urgency.toString()),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(lang == AppLanguage.zh ? '取消' : 'Cancel'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    await _deleteTask(task);
+                    Navigator.of(context).pop();
+                  },
+                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                  child: Text(lang == AppLanguage.zh ? '刪除' : 'Delete'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (dialogController.text.trim().isNotEmpty) {
+                      task.title = dialogController.text.trim();
+                      task.importance = importance;
+                      task.urgency = urgency;
+                      await _saveTask(task);
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  child: Text(lang == AppLanguage.zh ? '儲存' : 'Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 }
 
 class EisenhowerListScreen extends StatelessWidget {
@@ -449,9 +591,10 @@ class EisenhowerListScreen extends StatelessWidget {
   ];
   final List<Task> tasks;
   final Future<void> Function(BuildContext, int quadrant) onAdd;
+  final Future<void> Function(BuildContext, Task) onEdit;
   final void Function(Task) onDelete;
   final AppLanguage language;
-  const EisenhowerListScreen({super.key, required this.tasks, required this.onAdd, required this.onDelete, required this.language});
+  const EisenhowerListScreen({super.key, required this.tasks, required this.onAdd, required this.onEdit, required this.onDelete, required this.language});
 
   @override
   Widget build(BuildContext context) {
@@ -503,14 +646,48 @@ class EisenhowerListScreen extends StatelessWidget {
                               : ListView.builder(
                                   itemCount: quadrantTasks.length,
                                   itemBuilder: (context, j) {
-                                    return ListTile(
-                                      dense: true,
-                                      contentPadding: EdgeInsets.zero,
-                                      title: Text('${quadrantTasks[j].title} (${quadrantTasks[j].importance},${quadrantTasks[j].urgency})'),
-                                      trailing: IconButton(
-                                        icon: const Icon(Icons.delete, size: 18),
-                                        tooltip: language == AppLanguage.zh ? '刪除' : 'Delete',
-                                        onPressed: () => onDelete(quadrantTasks[j]),
+                                    final task = quadrantTasks[j];
+                                    return Dismissible(
+                                      key: Key('task_${task.id}'),
+                                      direction: DismissDirection.endToStart,
+                                      background: Container(
+                                        alignment: Alignment.centerRight,
+                                        padding: const EdgeInsets.only(right: 20),
+                                        color: Colors.red,
+                                        child: Icon(
+                                          Icons.delete,
+                                          color: Colors.white,
+                                          size: 24,
+                                        ),
+                                      ),
+                                      confirmDismiss: (direction) async {
+                                        return await showDialog<bool>(
+                                          context: context,
+                                          builder: (context) => AlertDialog(
+                                            title: Text(language == AppLanguage.zh ? '確認刪除' : 'Confirm Delete'),
+                                            content: Text(language == AppLanguage.zh ? '確定要刪除這個待辦事項嗎？' : 'Are you sure you want to delete this task?'),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () => Navigator.of(context).pop(false),
+                                                child: Text(language == AppLanguage.zh ? '取消' : 'Cancel'),
+                                              ),
+                                              TextButton(
+                                                onPressed: () => Navigator.of(context).pop(true),
+                                                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                                child: Text(language == AppLanguage.zh ? '刪除' : 'Delete'),
+                                              ),
+                                            ],
+                                          ),
+                                        ) ?? false;
+                                      },
+                                      onDismissed: (direction) {
+                                        onDelete(task);
+                                      },
+                                      child: ListTile(
+                                        dense: true,
+                                        contentPadding: EdgeInsets.zero,
+                                        title: Text('${task.title} (${task.importance},${task.urgency})'),
+                                        onTap: () => onEdit(context, task),
                                       ),
                                     );
                                   },
