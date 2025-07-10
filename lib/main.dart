@@ -6,6 +6,7 @@ import 'package:path/path.dart';
 //part 'task.g.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -226,56 +227,77 @@ Future<void> _savePreferences() async {
   @override
   Widget build(BuildContext context) {
     final isCyberpunk = _themeMode == AppThemeMode.cyberpunk;
+    final isDark = _themeMode == AppThemeMode.dark;
     final lang = _language;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (isCyberpunk) {
+        SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+          statusBarColor: cyberpunkPrimary,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+        ));
+      } else if (isDark) {
+        SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+        ));
+      } else {
+        SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+        ));
+      }
+    });
+
     return MaterialApp(
       title: lang == AppLanguage.zh ? 'Eisenhower Matrix Todo' : 'Eisenhower Matrix Todo',
-      theme: ThemeData(
+      theme: isCyberpunk ? cyberpunkTheme : ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         brightness: Brightness.light,
       ),
-      darkTheme: ThemeData(
+      darkTheme: isDark ? ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark),
         brightness: Brightness.dark,
-      ),
-      themeMode: isCyberpunk ? ThemeMode.light : materialThemeMode,
-      highContrastTheme: isCyberpunk ? cyberpunkTheme : null,
+      ) : null,
+      themeMode: isCyberpunk ? ThemeMode.light : 
+                isDark ? ThemeMode.dark : 
+                _themeMode == AppThemeMode.system ? ThemeMode.system : ThemeMode.light,
       home: Builder(
         builder: (context) {
-          final effectiveTheme = isCyberpunk ? cyberpunkTheme : Theme.of(context);
-          return Theme(
-            data: effectiveTheme,
-            child: Scaffold(
-              backgroundColor: isCyberpunk ? cyberpunkBackground : null,
-              body: IndexedStack(
-                index: _currentIndex,
-                children: [
-                  EisenhowerListScreen(
-                    tasks: tasks,
-                    onAdd: _showAddTaskDialog,
-                    onDelete: _deleteTask,
-                    language: lang,
-                  ),
-                  QuadrantPlaneScreen(tasks: tasks, isCyberpunk: isCyberpunk, language: lang),
-                  SettingsScreen(
-                    themeMode: _themeMode,
-                    onThemeChanged: _setThemeMode,
-                    language: lang,
-                    onLanguageChanged: _setLanguage,
-                  ),
-                ],
-              ),
-              bottomNavigationBar: BottomNavigationBar(
-                currentIndex: _currentIndex,
-                onTap: (i) => setState(() => _currentIndex = i),
-                backgroundColor: isCyberpunk ? cyberpunkSurface : Theme.of(context).colorScheme.surface,
-                selectedItemColor: isCyberpunk ? cyberpunkPrimary : Theme.of(context).colorScheme.primary,
-                unselectedItemColor: isCyberpunk ? cyberpunkSecondary : Theme.of(context).unselectedWidgetColor,
-                items: [
-                  BottomNavigationBarItem(icon: const Icon(Icons.list), label: lang == AppLanguage.zh ? '清單' : 'List'),
-                  BottomNavigationBarItem(icon: const Icon(Icons.grid_4x4), label: lang == AppLanguage.zh ? '座標' : 'Plane'),
-                  BottomNavigationBarItem(icon: const Icon(Icons.settings), label: lang == AppLanguage.zh ? '設定' : 'Settings'),
-                ],
-              ),
+          return Scaffold(
+            backgroundColor: isCyberpunk ? cyberpunkBackground : null,
+            body: IndexedStack(
+              index: _currentIndex,
+              children: [
+                EisenhowerListScreen(
+                  tasks: tasks,
+                  onAdd: _showAddTaskDialog,
+                  onDelete: _deleteTask,
+                  language: lang,
+                ),
+                QuadrantPlaneScreen(tasks: tasks, isCyberpunk: isCyberpunk, language: lang),
+                SettingsScreen(
+                  themeMode: _themeMode,
+                  onThemeChanged: _setThemeMode,
+                  language: lang,
+                  onLanguageChanged: _setLanguage,
+                ),
+              ],
+            ),
+            bottomNavigationBar: BottomNavigationBar(
+              currentIndex: _currentIndex,
+              onTap: (i) => setState(() => _currentIndex = i),
+              backgroundColor: isCyberpunk ? cyberpunkSurface : Theme.of(context).colorScheme.surface,
+              selectedItemColor: isCyberpunk ? cyberpunkPrimary : Theme.of(context).colorScheme.primary,
+              unselectedItemColor: isCyberpunk ? cyberpunkSecondary : Theme.of(context).unselectedWidgetColor,
+              items: [
+                BottomNavigationBarItem(icon: const Icon(Icons.list), label: lang == AppLanguage.zh ? '清單' : 'List'),
+                BottomNavigationBarItem(icon: const Icon(Icons.grid_4x4), label: lang == AppLanguage.zh ? '座標' : 'Plane'),
+                BottomNavigationBarItem(icon: const Icon(Icons.settings), label: lang == AppLanguage.zh ? '設定' : 'Settings'),
+              ],
             ),
           );
         },
