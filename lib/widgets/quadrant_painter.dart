@@ -11,10 +11,10 @@ class QuadrantPainter extends CustomPainter {
   final double scale;
   final Offset offset;
   
-  // 主題色彩 - 從 main.dart 移動過來
-  static const Color cyberpunkPrimary = Color(0xFF00FFFF);
-  static const Color cyberpunkSecondary = Color(0xFFFF00FF);
-  static const Color cyberpunkBackground = Color(0xFF0A0A0A);
+  // 主題色彩 - 與 main.dart 保持一致
+  static const Color cyberpunkPrimary = Color(0xFFFFF000); // 螢光黃
+  static const Color cyberpunkSecondary = Color(0xFF00FFF7); // 螢光藍
+  static const Color cyberpunkBackground = Color(0xFF1A1832); // 深藍紫
   
   QuadrantPainter(
     this.tasks, {
@@ -47,8 +47,8 @@ class QuadrantPainter extends CustomPainter {
         ? cyberpunkSecondary.withOpacity(0.4)
         : (isDark ? Colors.white.withOpacity(0.3) : Colors.grey.withOpacity(0.4));
     final backgroundColor = isCyberpunk
-        ? cyberpunkBackground
-        : (isDark ? Color(0xFF1E1E1E) : Color(0xFFFAFAFA));
+        ? const Color(0xFF2D1B3C) // 紫色，與主背景一致
+        : (isDark ? const Color(0xFF1E1E1E) : const Color(0xFFFAFAFA));
 
     // 畫布設定 - 使用整個畫面
     final margin = 30.0;
@@ -184,7 +184,7 @@ class QuadrantPainter extends CustomPainter {
     final majorStepY = _calculateMajorStep(rangeY);
 
     final textStyle = TextStyle(
-      color: labelColor,
+      color: isCyberpunk ? cyberpunkPrimary : labelColor, // cyberpunk 模式下座標軸數字用螢光黃
       fontSize: 12,
       fontWeight: FontWeight.w400,
     );

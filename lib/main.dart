@@ -53,7 +53,17 @@ class _EisenhowerAppState extends State<EisenhowerApp> {
   void initState() {
     super.initState();
     _databaseService = DatabaseService();
+    _resetDatabaseIfNeeded();
     _loadData();
+  }
+  
+  Future<void> _resetDatabaseIfNeeded() async {
+    // 臨時解決方案：如果資料庫版本不匹配，重新創建資料庫
+    try {
+      await _databaseService.resetDatabase();
+    } catch (e) {
+      debugPrint('Error resetting database: $e');
+    }
   }
   
   Future<void> _loadData() async {
@@ -278,6 +288,7 @@ Future<void> _savePreferences() async {
 
   Future<void> _showAddTaskDialog(BuildContext context, int quadrant, {double? coordinateImportance, double? coordinateUrgency}) async {
     final TextEditingController dialogController = TextEditingController();
+    final TextEditingController descriptionController = TextEditingController();
     // 根據象限設定權重範圍
     int minImportance = -5, maxImportance = 5, minUrgency = -5, maxUrgency = 5;
     int defaultImportance = 0, defaultUrgency = 0;
@@ -365,14 +376,33 @@ Future<void> _savePreferences() async {
               TextField(
                 controller: dialogController,
                 autofocus: true,
-                decoration: InputDecoration(labelText: lang == AppLanguage.zh ? '輸入待辦事項' : 'Enter todo'),
+                maxLength: 72,
+                decoration: InputDecoration(
+                  labelText: lang == AppLanguage.zh ? '輸入待辦事項' : 'Enter todo',
+                  counterText: '',
+                ),
                 onSubmitted: (value) async {
-                  if (value.trim().isNotEmpty) {
-                    final newTask = Task(value.trim(), actualQuadrant, importance: importance, urgency: urgency);
+                  if (value.trim().isNotEmpty && value.trim().length <= 72) {
+                    final newTask = Task(value.trim(), actualQuadrant, 
+                      description: descriptionController.text.trim(),
+                      importance: importance, 
+                      urgency: urgency
+                    );
                     await _saveTask(newTask);
                     Navigator.of(context).pop();
                   }
                 },
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: descriptionController,
+                maxLength: 400,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: lang == AppLanguage.zh ? '備註（選填）' : 'Description (optional)',
+                  alignLabelWithHint: true,
+                  border: OutlineInputBorder(),
+                ),
               ),
               const SizedBox(height: 8),
               Row(
@@ -422,8 +452,12 @@ Future<void> _savePreferences() async {
             ),
             ElevatedButton(
               onPressed: () async {
-                if (dialogController.text.trim().isNotEmpty) {
-                  final newTask = Task(dialogController.text.trim(), actualQuadrant, importance: importance, urgency: urgency);
+                if (dialogController.text.trim().isNotEmpty && dialogController.text.trim().length <= 72) {
+                  final newTask = Task(dialogController.text.trim(), actualQuadrant, 
+                    description: descriptionController.text.trim(),
+                    importance: importance, 
+                    urgency: urgency
+                  );
                   await _saveTask(newTask);
                   Navigator.of(context).pop();
                 }
@@ -438,6 +472,7 @@ Future<void> _savePreferences() async {
 
   Future<void> _showEditTaskDialog(BuildContext context, Task task) async {
     final TextEditingController dialogController = TextEditingController(text: task.title);
+    final TextEditingController descriptionController = TextEditingController(text: task.description);
     final originalQuadrant = task.quadrant;
     
     // 根據象限設定權重範圍
@@ -490,16 +525,32 @@ Future<void> _savePreferences() async {
                   TextField(
                     controller: dialogController,
                     autofocus: true,
-                    decoration: InputDecoration(labelText: lang == AppLanguage.zh ? '修改待辦事項' : 'Edit todo'),
+                    maxLength: 72,
+                    decoration: InputDecoration(
+                      labelText: lang == AppLanguage.zh ? '修改待辦事項' : 'Edit todo',
+                      counterText: '',
+                    ),
                     onSubmitted: (value) async {
-                      if (value.trim().isNotEmpty) {
+                      if (value.trim().isNotEmpty && value.trim().length <= 72) {
                         task.title = value.trim();
+                        task.description = descriptionController.text.trim();
                         task.importance = importance;
                         task.urgency = urgency;
                         await _saveTask(task);
                         Navigator.of(context).pop();
                       }
                     },
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: descriptionController,
+                    maxLength: 400,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      labelText: lang == AppLanguage.zh ? '備註' : 'Description',
+                      alignLabelWithHint: true,
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Row(
@@ -561,6 +612,7 @@ Future<void> _savePreferences() async {
                   onPressed: () async {
                     if (dialogController.text.trim().isNotEmpty) {
                       task.title = dialogController.text.trim();
+                      task.description = descriptionController.text.trim();
                       task.importance = importance;
                       task.urgency = urgency;
                       await _saveTask(task);

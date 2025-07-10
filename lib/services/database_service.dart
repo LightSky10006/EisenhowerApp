@@ -30,12 +30,13 @@ class DatabaseService {
     
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE tasks(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
+            description TEXT,
             quadrant INTEGER NOT NULL,
             importance INTEGER NOT NULL,
             urgency INTEGER NOT NULL,
@@ -48,6 +49,11 @@ class DatabaseService {
         await db.execute('CREATE INDEX idx_tasks_quadrant ON tasks(quadrant)');
         await db.execute('CREATE INDEX idx_tasks_importance ON tasks(importance)');
         await db.execute('CREATE INDEX idx_tasks_urgency ON tasks(urgency)');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('ALTER TABLE tasks ADD COLUMN description TEXT');
+        }
       },
     );
   }
@@ -80,7 +86,11 @@ class DatabaseService {
       taskMap['created_at'] = now;
       taskMap['updated_at'] = now;
       
-      return await db.insert('tasks', taskMap);
+      debugPrint('Inserting task: $taskMap');
+      
+      final result = await db.insert('tasks', taskMap);
+      debugPrint('Insert result: $result');
+      return result;
     } catch (e) {
       debugPrint('Error inserting task: $e');
       return -1;
@@ -141,6 +151,29 @@ class DatabaseService {
     } catch (e) {
       debugPrint('Error loading tasks by quadrant: $e');
       return [];
+    }
+  }
+  
+  // 重設資料庫（強制重新創建）
+  Future<void> resetDatabase() async {
+    if (kIsWeb) return;
+    
+    try {
+      final dbPath = await getDatabasesPath();
+      final path = join(dbPath, 'eisenhower_tasks.db');
+      
+      // 關閉現有資料庫連接
+      await close();
+      
+      // 刪除資料庫檔案
+      await deleteDatabase(path);
+      
+      // 重新初始化資料庫
+      _database = await _initDatabase();
+      
+      debugPrint('Database reset successfully');
+    } catch (e) {
+      debugPrint('Error resetting database: $e');
     }
   }
   

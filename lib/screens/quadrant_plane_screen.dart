@@ -183,7 +183,7 @@ class _QuadrantPlaneScreenState extends State<QuadrantPlaneScreen> {
             height: double.infinity,
             decoration: BoxDecoration(
               color: widget.isCyberpunk 
-                ? const Color(0xFF1A1832) // 深藍紫
+                ? const Color(0xFF2D1B3C) // 紫色，與主背景一致
                 : (isDark ? const Color(0xFF1E1E1E) : const Color(0xFFFAFAFA)),
             ),
             child: CustomPaint(
