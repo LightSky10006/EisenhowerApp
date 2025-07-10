@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart';
+import 'dart:math' as math;
 //import 'package:hive_flutter/hive_flutter.dart';
 //import 'package:path_provider/path_provider.dart' as path_provider;
 //part 'task.g.dart';
@@ -706,12 +707,22 @@ class EisenhowerListScreen extends StatelessWidget {
   }
 }
 
-class QuadrantPlaneScreen extends StatelessWidget {
+class QuadrantPlaneScreen extends StatefulWidget {
   final List<Task> tasks;
   final bool isCyberpunk;
   final AppLanguage language;
   const QuadrantPlaneScreen({super.key, required this.tasks, this.isCyberpunk = false, required this.language});
 
+  @override
+  State<QuadrantPlaneScreen> createState() => _QuadrantPlaneScreenState();
+}
+
+class _QuadrantPlaneScreenState extends State<QuadrantPlaneScreen> {
+  double _scale = 1.0;
+  Offset _offset = Offset.zero;
+  double _baseScale = 1.0;
+  Offset _baseOffset = Offset.zero;
+  
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -719,9 +730,61 @@ class QuadrantPlaneScreen extends StatelessWidget {
       child: Center(
         child: AspectRatio(
           aspectRatio: 1,
-          child: CustomPaint(
-            painter: QuadrantPainter(tasks, isDark: isDark, isCyberpunk: isCyberpunk, language: language),
-            child: Container(),
+          child: GestureDetector(
+            onScaleStart: (details) {
+              // 記錄開始縮放時的狀態
+              _baseScale = _scale;
+              _baseOffset = _offset;
+            },
+            onScaleUpdate: (details) {
+              setState(() {
+                // 縮放計算
+                final newScale = _baseScale * details.scale;
+                _scale = newScale.clamp(0.5, 5.0);
+                
+                // 平移計算 - 以焦點為中心
+                _offset = _baseOffset + details.focalPointDelta;
+                
+                // 限制平移範圍
+                final maxOffset = 300.0 * _scale;
+                _offset = Offset(
+                  _offset.dx.clamp(-maxOffset, maxOffset),
+                  _offset.dy.clamp(-maxOffset, maxOffset),
+                );
+              });
+            },
+            onDoubleTap: () {
+              // 雙擊重置 - 動畫效果
+              setState(() {
+                _scale = 1.0;
+                _offset = Offset.zero;
+              });
+            },
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: widget.isCyberpunk 
+                    ? _EisenhowerAppState.cyberpunkPrimary.withOpacity(0.3)
+                    : (isDark ? Colors.white.withOpacity(0.3) : Colors.grey.withOpacity(0.3)),
+                  width: 1,
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CustomPaint(
+                  painter: QuadrantPainter(
+                    widget.tasks, 
+                    isDark: isDark, 
+                    isCyberpunk: widget.isCyberpunk, 
+                    language: widget.language,
+                    scale: _scale,
+                    offset: _offset,
+                  ),
+                  child: Container(),
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -734,64 +797,335 @@ class QuadrantPainter extends CustomPainter {
   final bool isDark;
   final bool isCyberpunk;
   final AppLanguage language;
-  QuadrantPainter(this.tasks, {this.isDark = false, this.isCyberpunk = false, required this.language});
+  final double scale;
+  final Offset offset;
+  
+  QuadrantPainter(
+    this.tasks, {
+    this.isDark = false, 
+    this.isCyberpunk = false, 
+    required this.language,
+    this.scale = 1.0,
+    this.offset = Offset.zero,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
+    // 顏色定義 - 完全 GeoGebra 風格
     final axisColor = isCyberpunk
         ? _EisenhowerAppState.cyberpunkPrimary
         : (isDark ? Colors.white : Colors.black);
     final labelColor = isCyberpunk
         ? _EisenhowerAppState.cyberpunkSecondary
-        : (isDark ? Colors.white : Colors.black);
+        : (isDark ? Colors.white.withOpacity(0.9) : Colors.black.withOpacity(0.85));
     final pointColor = isCyberpunk
         ? _EisenhowerAppState.cyberpunkSecondary
-        : Colors.blue;
-    final borderColor = isCyberpunk
-        ? _EisenhowerAppState.cyberpunkPrimary.withOpacity(0.5)
-        : (isDark ? Colors.white54 : Colors.grey);
+        : Color(0xFF1976D2); // 深藍色，更專業
+    final gridColor = isCyberpunk
+        ? _EisenhowerAppState.cyberpunkPrimary.withOpacity(0.15)
+        : (isDark ? Colors.white.withOpacity(0.12) : Colors.grey.withOpacity(0.25));
+    final minorGridColor = isCyberpunk
+        ? _EisenhowerAppState.cyberpunkPrimary.withOpacity(0.08)
+        : (isDark ? Colors.white.withOpacity(0.06) : Colors.grey.withOpacity(0.15));
+    final quadrantLabelColor = isCyberpunk
+        ? _EisenhowerAppState.cyberpunkSecondary.withOpacity(0.4)
+        : (isDark ? Colors.white.withOpacity(0.3) : Colors.grey.withOpacity(0.4));
+    final backgroundColor = isCyberpunk
+        ? _EisenhowerAppState.cyberpunkBackground
+        : (isDark ? Color(0xFF1E1E1E) : Color(0xFFFAFAFA));
+
+    // 畫布設定
+    const margin = 50.0;
+    final plotWidth = size.width - 2 * margin;
+    final plotHeight = size.height - 2 * margin;
+    final centerX = margin + plotWidth / 2;
+    final centerY = margin + plotHeight / 2;
+
+    // 1. 背景
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), 
+      Paint()..color = backgroundColor);
+
+    // 應用縮放和平移變換
+    canvas.save();
+    canvas.translate(centerX + offset.dx, centerY + offset.dy);
+    canvas.scale(scale, scale);
+    canvas.translate(-centerX, -centerY);
+
+    // 2. 細網格線（0.5單位間隔）
+    _drawMinorGrid(canvas, size, margin, plotWidth, plotHeight, minorGridColor);
+
+    // 3. 主網格線（1單位間隔）
+    _drawMajorGrid(canvas, size, margin, plotWidth, plotHeight, gridColor);
+
+    // 4. 象限背景色
+    _drawQuadrantBackgrounds(canvas, margin, plotWidth, plotHeight, isDark, isCyberpunk);
+
+    // 5. 座標軸
+    _drawAxes(canvas, centerX, centerY, plotWidth, plotHeight, axisColor);
+
+    // 6. 刻度和數值
+    _drawTicks(canvas, centerX, centerY, plotWidth, plotHeight, axisColor, labelColor);
+
+    // 7. 軸標籤
+    _drawAxisLabels(canvas, centerX, centerY, plotWidth, plotHeight, labelColor);
+
+    // 8. 象限標籤
+    _drawQuadrantLabels(canvas, centerX, centerY, plotWidth, plotHeight, quadrantLabelColor);
+
+    // 9. 任務點
+    _drawTasks(canvas, margin, plotWidth, plotHeight, pointColor, labelColor, axisColor);
+
+    // 10. 邊框
+    _drawBorder(canvas, margin, plotWidth, plotHeight, axisColor.withOpacity(0.6));
+
+    canvas.restore();
+  }
+
+  void _drawMinorGrid(Canvas canvas, Size size, double margin, double plotWidth, double plotHeight, Color color) {
     final paint = Paint()
+      ..color = color
+      ..strokeWidth = 0.5 / scale;
+
+    // 每 0.5 單位畫一條線
+    for (double i = -5; i <= 5; i += 0.5) {
+      if (i == 0) continue; // 跳過中心軸
+      // 垂直線
+      final x = margin + (i + 5) * plotWidth / 10;
+      canvas.drawLine(Offset(x, margin), Offset(x, margin + plotHeight), paint);
+      // 水平線
+      final y = margin + (5 - i) * plotHeight / 10;
+      canvas.drawLine(Offset(margin, y), Offset(margin + plotWidth, y), paint);
+    }
+  }
+
+  void _drawMajorGrid(Canvas canvas, Size size, double margin, double plotWidth, double plotHeight, Color color) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.0 / scale;
+
+    // 每 1 單位畫一條線
+    for (int i = -5; i <= 5; i++) {
+      if (i == 0) continue; // 跳過中心軸
+      // 垂直線
+      final x = margin + (i + 5) * plotWidth / 10;
+      canvas.drawLine(Offset(x, margin), Offset(x, margin + plotHeight), paint);
+      // 水平線
+      final y = margin + (5 - i) * plotHeight / 10;
+      canvas.drawLine(Offset(margin, y), Offset(margin + plotWidth, y), paint);
+    }
+  }
+
+  void _drawQuadrantBackgrounds(Canvas canvas, double margin, double plotWidth, double plotHeight, bool isDark, bool isCyberpunk) {
+    // 淺色背景區分象限
+    final colors = [
+      (isCyberpunk ? _EisenhowerAppState.cyberpunkPrimary : Colors.red).withOpacity(0.03),
+      (isCyberpunk ? _EisenhowerAppState.cyberpunkSecondary : Colors.orange).withOpacity(0.03),
+      (isCyberpunk ? _EisenhowerAppState.cyberpunkPrimary : Colors.blue).withOpacity(0.03),
+      (isCyberpunk ? _EisenhowerAppState.cyberpunkSecondary : Colors.green).withOpacity(0.03),
+    ];
+
+    // 象限矩形：右上、右下、左上、左下
+    final quadrants = [
+      Rect.fromLTWH(margin + plotWidth/2, margin, plotWidth/2, plotHeight/2),
+      Rect.fromLTWH(margin + plotWidth/2, margin + plotHeight/2, plotWidth/2, plotHeight/2),
+      Rect.fromLTWH(margin, margin, plotWidth/2, plotHeight/2),
+      Rect.fromLTWH(margin, margin + plotHeight/2, plotWidth/2, plotHeight/2),
+    ];
+
+    for (int i = 0; i < 4; i++) {
+      canvas.drawRect(quadrants[i], Paint()..color = colors[i]);
+    }
+  }
+
+  void _drawAxes(Canvas canvas, double centerX, double centerY, double plotWidth, double plotHeight, Color color) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2.5 / scale;
+
+    // 主軸
+    canvas.drawLine(Offset(centerX, centerY - plotHeight/2), Offset(centerX, centerY + plotHeight/2), paint);
+    canvas.drawLine(Offset(centerX - plotWidth/2, centerY), Offset(centerX + plotWidth/2, centerY), paint);
+
+    // 箭頭
+    final arrowPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    final arrowSize = 8.0 / scale;
+
+    // X軸箭頭
+    final xArrow = Path()
+      ..moveTo(centerX + plotWidth/2, centerY)
+      ..lineTo(centerX + plotWidth/2 - arrowSize, centerY - arrowSize/2)
+      ..lineTo(centerX + plotWidth/2 - arrowSize, centerY + arrowSize/2)
+      ..close();
+    canvas.drawPath(xArrow, arrowPaint);
+
+    // Y軸箭頭
+    final yArrow = Path()
+      ..moveTo(centerX, centerY - plotHeight/2)
+      ..lineTo(centerX - arrowSize/2, centerY - plotHeight/2 + arrowSize)
+      ..lineTo(centerX + arrowSize/2, centerY - plotHeight/2 + arrowSize)
+      ..close();
+    canvas.drawPath(yArrow, arrowPaint);
+  }
+
+  void _drawTicks(Canvas canvas, double centerX, double centerY, double plotWidth, double plotHeight, Color axisColor, Color labelColor) {
+    final tickPaint = Paint()
       ..color = axisColor
-      ..strokeWidth = 2;
-    // 畫中線
-    canvas.drawLine(Offset(size.width/2, 0), Offset(size.width/2, size.height), paint);
-    canvas.drawLine(Offset(0, size.height/2), Offset(size.width, size.height/2), paint);
-    // 畫刻度與標籤
-    textPainter(String text, Offset offset, {TextAlign align = TextAlign.left, Color? color}) {
+      ..strokeWidth = 1.5 / scale;
+    final tickSize = 8.0 / scale;
+    final fontSize = (11.0 / scale).clamp(8.0, 16.0);
+
+    // X軸刻度
+    for (int i = -5; i <= 5; i++) {
+      if (i == 0) continue;
+      final x = centerX + i * plotWidth / 10;
+      canvas.drawLine(Offset(x, centerY - tickSize/2), Offset(x, centerY + tickSize/2), tickPaint);
+      
+      // 刻度標籤
       final tp = TextPainter(
-        text: TextSpan(text: text, style: TextStyle(fontSize: 14, color: color ?? labelColor)),
-        textDirection: TextDirection.ltr,
-        textAlign: align,
-      )..layout();
-      tp.paint(canvas, offset);
-    }
-    // 橫軸標籤
-    textPainter(language == AppLanguage.zh ? '不重要' : 'Not Important', Offset(8, size.height/2-24));
-    textPainter(language == AppLanguage.zh ? '重要' : 'Important', Offset(size.width-72, size.height/2-24));
-    // 縱軸標籤
-    textPainter(language == AppLanguage.zh ? '緊急' : 'Urgent', Offset(size.width/2+8, 8));
-    textPainter(language == AppLanguage.zh ? '不緊急' : 'Not Urgent', Offset(size.width/2+8, size.height-28));
-    // 畫任務
-    for (final t in tasks) {
-      // importance, urgency -5~+5 => -6~+6 畫布
-      final x = (t.importance + 6) / 12; // -6~+6 -> 0~1
-      final y = 1 - ((t.urgency + 6) / 12); // -6~+6 -> 0~1 (上正下負)
-      final px = x * size.width;
-      final py = y * size.height;
-      final tp = TextPainter(
-        text: TextSpan(text: t.title, style: TextStyle(fontSize: 13, color: pointColor)),
+        text: TextSpan(text: i.toString(), style: TextStyle(fontSize: fontSize, color: labelColor, fontWeight: FontWeight.w500)),
         textDirection: TextDirection.ltr,
       )..layout();
-      tp.paint(canvas, Offset(px-tp.width/2, py-tp.height/2-8));
-      // 畫點
-      canvas.drawCircle(Offset(px, py), 5, Paint()..color=pointColor);
+      tp.paint(canvas, Offset(x - tp.width/2, centerY + tickSize + 4 / scale));
     }
-    // 畫邊界線
-    final border = Paint()
-      ..color = borderColor
+
+    // Y軸刻度
+    for (int i = -5; i <= 5; i++) {
+      if (i == 0) continue;
+      final y = centerY - i * plotHeight / 10;
+      canvas.drawLine(Offset(centerX - tickSize/2, y), Offset(centerX + tickSize/2, y), tickPaint);
+      
+      // 刻度標籤
+      final tp = TextPainter(
+        text: TextSpan(text: i.toString(), style: TextStyle(fontSize: fontSize, color: labelColor, fontWeight: FontWeight.w500)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, Offset(centerX - tickSize - tp.width - 4 / scale, y - tp.height/2));
+    }
+
+    // 原點
+    final originTp = TextPainter(
+      text: TextSpan(text: '0', style: TextStyle(fontSize: fontSize, color: labelColor, fontWeight: FontWeight.w500)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    originTp.paint(canvas, Offset(centerX - tickSize - originTp.width - 4 / scale, centerY + 4 / scale));
+  }
+
+  void _drawAxisLabels(Canvas canvas, double centerX, double centerY, double plotWidth, double plotHeight, Color labelColor) {
+    final fontSize = (13.0 / scale).clamp(10.0, 18.0);
+    final labelStyle = TextStyle(fontSize: fontSize, color: labelColor, fontWeight: FontWeight.w600);
+
+    // X軸標籤
+    final xLabel = TextPainter(
+      text: TextSpan(text: language == AppLanguage.zh ? '重要程度' : 'Importance', style: labelStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    xLabel.paint(canvas, Offset(centerX + plotWidth/2 - xLabel.width, centerY + plotHeight/2 + 30 / scale));
+
+    // Y軸標籤（旋轉）
+    canvas.save();
+    canvas.translate(centerX - plotWidth/2 - 35 / scale, centerY - plotHeight/2 + 10 / scale);
+    canvas.rotate(-math.pi / 2);
+    final yLabel = TextPainter(
+      text: TextSpan(text: language == AppLanguage.zh ? '緊急程度' : 'Urgency', style: labelStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    yLabel.paint(canvas, Offset.zero);
+    canvas.restore();
+  }
+
+  void _drawQuadrantLabels(Canvas canvas, double centerX, double centerY, double plotWidth, double plotHeight, Color quadrantLabelColor) {
+    final fontSize = (15.0 / scale).clamp(10.0, 20.0);
+    final quadrantStyle = TextStyle(fontSize: fontSize, color: quadrantLabelColor, fontWeight: FontWeight.w700);
+    final quadrantTitles = language == AppLanguage.zh
+        ? ['重要且緊急', '重要不緊急', '不重要但緊急', '不重要不緊急']
+        : ['Important & Urgent', 'Important & Not Urgent', 'Not Important & Urgent', 'Not Important & Not Urgent'];
+
+    // 象限中心點
+    final centers = [
+      Offset(centerX + plotWidth/4, centerY - plotHeight/4), // 右上
+      Offset(centerX + plotWidth/4, centerY + plotHeight/4), // 右下
+      Offset(centerX - plotWidth/4, centerY - plotHeight/4), // 左上
+      Offset(centerX - plotWidth/4, centerY + plotHeight/4), // 左下
+    ];
+
+    for (int i = 0; i < 4; i++) {
+      final tp = TextPainter(
+        text: TextSpan(text: quadrantTitles[i], style: quadrantStyle),
+        textDirection: TextDirection.ltr,
+        textAlign: TextAlign.center,
+      )..layout();
+      tp.paint(canvas, Offset(centers[i].dx - tp.width/2, centers[i].dy - tp.height/2));
+    }
+  }
+
+  void _drawTasks(Canvas canvas, double margin, double plotWidth, double plotHeight, Color pointColor, Color labelColor, Color axisColor) {
+    // 根據縮放調整點大小和字體大小
+    final pointSize = (6.0 / scale).clamp(3.0, 10.0);
+    final fontSize = (11.0 / scale).clamp(8.0, 16.0);
+    
+    for (final task in tasks) {
+      final x = margin + (task.importance + 5) * plotWidth / 10;
+      final y = margin + (5 - task.urgency) * plotHeight / 10;
+
+      // 任務點陰影
+      canvas.drawCircle(Offset(x + 1, y + 1), pointSize + 1, Paint()..color = Colors.black.withOpacity(0.2));
+
+      // 任務點
+      canvas.drawCircle(Offset(x, y), pointSize, Paint()..color = pointColor);
+
+      // 任務點邊框
+      canvas.drawCircle(Offset(x, y), pointSize, Paint()
+        ..color = axisColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5 / scale);
+
+      // 任務標籤背景
+      final tp = TextPainter(
+        text: TextSpan(
+          text: task.title,
+          style: TextStyle(fontSize: fontSize, color: labelColor, fontWeight: FontWeight.w600),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      final labelPadding = 6.0 / scale;
+      final labelOffset = 18.0 / scale;
+      
+      final labelRect = Rect.fromLTWH(
+        x - tp.width/2 - labelPadding,
+        y - tp.height - labelOffset,
+        tp.width + labelPadding * 2,
+        tp.height + labelPadding,
+      );
+
+      // 標籤背景
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(labelRect, Radius.circular(6 / scale)),
+        Paint()..color = Colors.white.withOpacity(0.9),
+      );
+
+      // 標籤邊框
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(labelRect, Radius.circular(6 / scale)),
+        Paint()
+          ..color = axisColor.withOpacity(0.3)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1 / scale,
+      );
+
+      // 標籤文字
+      tp.paint(canvas, Offset(x - tp.width/2, y - tp.height - labelOffset + labelPadding/2));
+    }
+  }
+
+  void _drawBorder(Canvas canvas, double margin, double plotWidth, double plotHeight, Color color) {
+    final borderPaint = Paint()
+      ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), border);
+      ..strokeWidth = 2 / scale;
+    canvas.drawRect(Rect.fromLTWH(margin, margin, plotWidth, plotHeight), borderPaint);
   }
 
   @override
