@@ -178,6 +178,10 @@ Future<void> _savePreferences() async {
 }
 
   ThemeMode get materialThemeMode {
+    // 只在 cyberpunk 時回傳 null，讓 MaterialApp 用 highContrastTheme
+    if (_themeMode == AppThemeMode.cyberpunk) {
+      return ThemeMode.system; // 或 ThemeMode.light，並配合 highContrastTheme
+    }
     switch (_themeMode) {
       case AppThemeMode.light:
         return ThemeMode.light;
@@ -185,7 +189,7 @@ Future<void> _savePreferences() async {
         return ThemeMode.dark;
       case AppThemeMode.system:
         return ThemeMode.system;
-      case AppThemeMode.cyberpunk:
+      default:
         return ThemeMode.light;
     }
   }
@@ -222,8 +226,6 @@ Future<void> _savePreferences() async {
   @override
   Widget build(BuildContext context) {
     final isCyberpunk = _themeMode == AppThemeMode.cyberpunk;
-    // 直接用 ThemeData，避免 Theme.of(context) 受 Theme 包覆影響
-    final theme = isCyberpunk ? cyberpunkTheme : (_themeMode == AppThemeMode.dark ? ThemeData.dark() : ThemeData.light());
     final lang = _language;
     return MaterialApp(
       title: lang == AppLanguage.zh ? 'Eisenhower Matrix Todo' : 'Eisenhower Matrix Todo',
@@ -235,7 +237,7 @@ Future<void> _savePreferences() async {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark),
         brightness: Brightness.dark,
       ),
-      themeMode: materialThemeMode,
+      themeMode: isCyberpunk ? ThemeMode.light : materialThemeMode,
       highContrastTheme: isCyberpunk ? cyberpunkTheme : null,
       home: Builder(
         builder: (context) {
