@@ -1,6 +1,6 @@
 # Eisenhower Matrix Todo App
 [中文說明](https://github.com/LightSky10006/EisenhowerApp/blob/main/README.md)
-
+This is only for study used.
 Eisenhower Matrix Todo App - A beautiful, modern productivity tool built with Flutter.
 
 ---

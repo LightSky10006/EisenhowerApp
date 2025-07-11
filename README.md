@@ -1,6 +1,6 @@
 # Eisenhower Matrix Todo App
 [English readme](https://github.com/LightSky10006/EisenhowerApp/blob/main/README_en.md)
-
+This is only for study used.
 艾森豪矩陣待辦事項（Eisenhower Matrix Todo App）
 
 ---
